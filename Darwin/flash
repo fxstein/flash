@@ -11,19 +11,24 @@ usage: $0 [options] name-of-rpi.img
 Flash a local or remote Raspberry Pi SD card image.
 
 OPTIONS:
-  --help|-h      Show this message
-  --bootconf|-C  Copy this config file to /boot/config.txt
-  --config|-c    Copy this config file to /boot/device-init.yaml (or occidentalis.txt)
-  --hostname|-n  Set hostname for this SD image
-  --ssid|-s      Set WiFi SSID for this SD image
-  --password|-p  Set WiFI password for this SD image
+  --help|-h       Show this message
+  --bootconf|-C   Copy this config file to /boot/config.txt
+  --config|-c     Copy this config file to /boot/device-init.yaml (or occidentalis.txt)
+  --hostname|-n   Set hostname for this SD image
+  --ssid|-s       Set WiFi SSID for this SD image
+  --password|-p   Set WiFI password for this SD image
+  --clusterlab|-l Start Cluster-Lab on boot: true or false
 
 For HypriotOS devices:
 
 The config file device-init.yaml should look like
 
 hostname: black-pearl
-
+wifi:
+  interfaces:
+    wlan0:
+      ssid: "MyNetwork"
+      password: "secret_password"
 
 For Raspberry Pi until Hector release:
 
@@ -56,6 +61,7 @@ do
     --ssid) args="${args}-s ";;
     --password) args="${args}-p ";;
     --bootconf) args="${args}-C ";;
+    --clusterlab) args="${args}-l ";;
     # pass through anything else
     *) [[ "${arg:0:1}" == "-" ]] || delim="\""
       args="${args}${delim}${arg}${delim} ";;
@@ -64,7 +70,7 @@ done
 # reset the translated args
 eval set -- "$args"
 # now we can process with getopt
-while getopts ":hc:n:s:p:C:" opt; do
+while getopts ":hc:n:s:p:C:l:" opt; do
   case $opt in
     h)  usage ;;
     c)  CONFIG_FILE=$OPTARG ;;
@@ -72,6 +78,7 @@ while getopts ":hc:n:s:p:C:" opt; do
     n)  SD_HOSTNAME=$OPTARG ;;
     s)  WIFI_SSID=$OPTARG ;;
     p)  WIFI_PASSWORD=$OPTARG ;;
+    l)  CLUSTERLAB=$OPTARG ;;
     \?) usage ;;
     :)
       echo "option -$OPTARG requires an argument"
@@ -122,6 +129,12 @@ else
     unzip -o "${image}" -d /tmp
     image=$(unzip -l "${image}" | grep --color=never -v Archive: | grep --color=never img | awk 'NF>1{print $NF}')
     image="/tmp/${image}"
+    echo "Use ${image}"
+  fi
+  if [[ "$(file "${image}")" == *"gzip compressed data"* ]]; then
+    echo "Uncompressing ${image} ..."
+    gzip -d "${image}" -c >/tmp/image.img
+    image=/tmp/image.img
     echo "Use ${image}"
   fi
   if [[ "$(file "${image}")" == *"xz compressed data"* ]]; then
@@ -218,6 +231,20 @@ if [ "${boot}" ]; then
     if [ ! -z "${SD_HOSTNAME}" ]; then
       echo "Set hostname=${SD_HOSTNAME}"
       /usr/bin/sed -i "" -e "s/.*hostname:.*\$/hostname: ${SD_HOSTNAME}/" "${boot}/device-init.yaml"
+    fi
+    if [ ! -z "${WIFI_SSID}" ]; then
+      echo "Set wlan0/ssid=${WIFI_SSID}"
+      /usr/bin/sed -i "" -e "s/.*wlan0:.*\$/    wlan0:/" "${boot}/device-init.yaml"
+      /usr/bin/sed -i "" -e "s/.*ssid:.*\$/      ssid: \"${WIFI_SSID}\"/" "${boot}/device-init.yaml"
+    fi
+    if [ ! -z "${WIFI_PASSWORD}" ]; then
+      echo "Set wlan0/password=${WIFI_PASSWORD}"
+      /usr/bin/sed -i "" -e "s/.*wlan0:.*\$/    wlan0:/" "${boot}/device-init.yaml"
+      /usr/bin/sed -i "" -e "s/.*password:.*\$/      password: \"${WIFI_PASSWORD}\"/" "${boot}/device-init.yaml"
+    fi
+    if [ ! -z "${CLUSTERLAB}" ]; then
+      echo "Set Cluster-Lab/run_on_boot={CLUSTERLAB}"
+      /usr/bin/sed -i "" -e "s/.*run_on_boot.*\$/    run_on_boot: \"${CLUSTERLAB}\"/" "${boot}/device-init.yaml"
     fi
   fi
 
